@@ -94,7 +94,69 @@ fn main() {
     let (string_4, length) = calculate_length(string_3);
     println!("Valor de S4: {string_4} y la longitud es: {length}");
 
+
+    let mut string_prueba = String::from("Hola, esto es una cadena de prueba");
+    let reference_1 = &string_prueba;
+    let reference_2 = &string_prueba;
+
+    println!("Valor de la referencia 1: {reference_1}");
+    println!("Valor de la referencia 1: {reference_2}");
+
+    let reference_3 = &mut string_prueba;
+    println!("Valor de la referencia 1, otra vez: {reference_3}");
+
+
+    // let referencia_3 = &mut string_prueba;
+
+    // let referencia_cadena = dangle();
+    // println!("Valor de la referencia de la cadena: {referencia_cadena}");
+
+
+    // Slices
+    let string_len = first_word(&String::from("Hola, mundo!!"));
+    println!("La longitud de la cadena es: {string_len}");
+
+    // Como en Python las cadenas se pueden manejar mediante slices
+    let string_slice = &String::from("Hola, mundo!!");
+    println!("La cadena es: {string_slice}");
+
+    // Para sacar el mundo!! -> debería ser algo así
+    let string_hola = &string_slice[0..5];
+    // [..5] es lo mismo que 0..5
+    // [5..] es lo mismo que 5..13
+    // [..] es lo mismo que 0..13
+    // [..=13] es lo mismo que 0..=13
+
+    println!("La cadena es: {string_hola}");
+    // En caso de acceder a un indice que no existe, se producira un error de tiempo de ejecucion -> es decir, peta
+
+    let string_world = &string_slice[6..13];
+    println!("La cadena es: {string_world}");
+
 }
+
+// FUNCIONES /////////
+
+// fn dangle() -> &String {
+//     let s = String::from("Hola, esto es una cadena de prueba");
+//     &s
+//     // Fallo porque cuando sale del scope, la variable s se elimina y por lo tanto la referencia es invalida
+// }
+
+fn first_word(s: &String) -> usize {
+    let bytes = s.as_bytes();
+
+    for (i, &item) in bytes.iter().enumerate() {
+        if item == b' ' {
+            return i;
+        }
+    }
+
+    s.len()
+}
+
+// Para sacar el world!! -> debería ser algo así
+// fn second_word(s: &String) -> (usize, usize) {
 
 fn takes_ownership(some_string: String) { // some_string comes into scope
     println!("{some_string}");
