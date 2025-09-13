@@ -347,4 +347,94 @@ fn main {
 ```
 
 Son funciones que se pueden utilizar a modo de constructores de "objetos" de tipo `struct`.
+
 #### Enums and Pattern matching
+
+Los tipos de datos enum, son secuencias de valores que puede tomar un determinado campo por ejemplo de un `struct`
+```rust
+enum IPAddrType {
+	V4,
+	V6,
+}
+struct IPAddr {
+	address: String,
+	type: IPAddrType,
+}
+
+fn main {
+	let ip_home = {
+		addres: String::from("127.0.0.1"),
+		type: IPAddrType::V4,
+	};
+}
+```
+
+##### enum Option \<T\>
+Rust por defecto no implementa el tipo de dato `null` pero, no obstante hay un _workaround_ que permite usarlo en la comparación de valores.
+
+Cuando por ejemplo definimos una variable con el tipo de dato `Option<i8>` el **TIPO** de la variable es `Option<i8>`, que es un `enum` genérico que puede contener:
+	- `Some(valor)` - Un valor de tipo `i8` (entero de 8 bits con signo)
+	- `None` - Ningún valor (equivalente a `null` en otros lenguajes)
+
+_Un ejemplo útil es cuando queremos obtener el primer dato de una lista, en el caso de que la lista contenga elementos, se retorna el valor, pero en el caso de que la lista esté vacía "se retornaría null" _
+
+```rust
+enum Option<T> {
+	None,
+	Some(T),
+}
+```
+
+```rust
+// Estamos implementando un numero y un caracter
+let number = Some(5)
+let character = Some('e')
+// Estamos implementando un tipo de dato entero Y VACÍO
+let absent_number: Option<i32> = None;
+```
+
+> _*Ojocuidao 1* si existe el tipo de dato `None`_
+> _*Ojocuidao 2* Estamos implementando un entero a través del `enum`, por lo tanto, si queremos implementarlo no podríamos porque no se trata de un entero o un caracter, lanzando el siguiente error. Para poder imprimirlo, sería necesario implementar un `trait`que lo permita.
+
+```bash
+  --> src/main.rs:35:34
+   |
+35 |     println!("El numero es: {}", number);
+   |                             --   ^^^^^^ `std::option::Option<{integer}>` cannot be formatted with the default formatter
+   |                             |
+   |                             required by this formatting parameter
+   |
+   = help: the trait `std::fmt::Display` is not implemented for `std::option::Option<{integer}>`
+   = note: in format strings you may be able to use `{:?}` (or {:#?} for pretty-print) instead
+   = note: this error originates in the macro `$crate::format_args_nl` which comes from the expansion of the macro `println` (in Nightly builds, run with -Z macro-backtrace for more info)
+```
+
+En este caso daría error porque en la suma no coinciden los tipos `i8` + `Option<i8>`
+
+```Rust
+let x: i8 = 5;
+let y: Option<i8> = Some(5); // Aqui estamos diciendo que el Some es de tipo i8
+// Pero
+let sum = x + y;
+```
+
+Dando el siguiente error:
+
+```rust
+error[E0277]: cannot add `Option<i8>` to `i8`
+  --> src/main.rs:37:17
+   |
+37 |     let sum = x + y;
+   |                 ^ no implementation for `i8 + Option<i8>`
+   |
+   = help: the trait `Add<Option<i8>>` is not implemented for `i8`
+   = help: the following other types implement trait `Add<Rhs>`:
+             `&i8` implements `Add<i8>`
+             `&i8` implements `Add`
+             `i8` implements `Add<&i8>`
+             `i8` implements `Add`
+
+```
+##### Pattern matching
+
+## [The `match` Control Flow Construct](https://doc.rust-lang.org/book/ch06-02-match.html#the-match-control-flow-construct)
