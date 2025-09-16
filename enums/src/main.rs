@@ -31,6 +31,17 @@ enum UsState {
     Arkansas,
 }
 
+impl UsState {
+    fn existed_in(&self, year: u16) -> bool {
+        match self {
+            UsState::Alabama => year >= 1819,
+            UsState::Alaska => year >= 1959,
+            _ => false,
+            // -- snip --
+        }
+    }
+}
+
 fn main() {
 
     let localhost= IPAddr {
@@ -118,7 +129,32 @@ fn main() {
     }
 
 
+    // if let Control Flow Construct
+    let config_max = Some(3u8);
+    match config_max {
+        Some(max) => println!("The maximum is configured to be {}", max),
+        _ => (),
+    }
+    // Esto se puede escribir de manera simplificada de la siguiente manera
+    let config_max_if_let = Some(10u8);
+    if let Some(max) = config_max_if_let {
+        println!("The maximum is configured to be {}", max);
+    }
 
+    // Si no elegimos ningún valor -> Es decir no
+    let config_max_if_let: Option<u8> = None;
+    if let Some(max) = config_max_if_let {
+        println!("The maximum is configured to be {}", max);
+    }else{
+        println!("No hay valor");
+    }
+
+    let coin = Coin::Quarter(UsState::Alaska);
+    if let Some(description) = describe_state_quarter(coin) {
+        println!("Description: {}", description);
+    } else {
+        println!("Not a quarter from a state");
+    }
 
 }
 
@@ -155,4 +191,19 @@ fn move_player(dice_roll: u8) {
 }
 fn reroll() {
     println!("Player rerolled");
+}
+
+fn describe_state_quarter(coin: Coin) -> Option<String> {
+    // Usando early return
+    let state = if let Coin::Quarter(state) = coin {
+        state
+    } else {
+        return None;
+    };
+
+    if state.existed_in(1900) {
+        Some(format!("{state:?} is pretty old, for America!"))
+    } else {
+        Some(format!("{state:?} is relatively new."))
+    }
 }
