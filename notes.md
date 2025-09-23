@@ -435,6 +435,404 @@ error[E0277]: cannot add `Option<i8>` to `i8`
              `i8` implements `Add`
 
 ```
-##### Pattern matching
 
-## [The `match` Control Flow Construct](https://doc.rust-lang.org/book/ch06-02-match.html#the-match-control-flow-construct)
+##### Pattern matching
+Permite comparar valores contra una serie de patrones y en base a ello ejecutar cierta funcionalidad del patrón con el que coincide.
+
+Similar a los switch-case de otros lenguajes.
+```rust
+enum Coin{
+    Penny,
+    Niquel,
+    Dime,
+    Quarter,
+    Dolar,
+}
+
+fn main {
+	let amount: Coin = Coin::Quarter;
+	let amount_in_cents = value_in_cents(amount);
+	print("Cantidad {}", amount_in_cents)  // -> Esto imprime 50
+}
+
+
+fn value_in_cents(coin: Coin) -> u8 {
+    match coin {
+        Coin::Penny => 1,
+        Coin::Niquel => 5,
+        Coin::Dime => 25,
+        Coin::Quarter => 50,
+        // Obviamente se puede hacer lo siguiente
+        Coin::Dollar => println!("Un dolarín"),
+        // ó {} si queremos utilizar multiples lineas
+        Coin::Dollar => {
+	        println!("Un dolarín");
+	        100
+	    },
+    }
+}
+```
+
+En el caso de que no se contemplen todos los casos del match, `Rust`indicará que hay un error, por ejemplo, en este trozo de código
+
+```bash
+    let dice_roll = 10;
+    match dice_roll {
+        3 => add_fancy_hat(),
+        7 => remove_fancy_hat(),
+        // _ => reroll(),  -> Comentamos esta linea
+    }
+
+```
+
+Dará el siguiente error:
+```rust
+error[E0004]: non-exhaustive patterns: `i32::MIN..=2_i32`, `4_i32..=6_i32` and `8_i32..=i32::MAX` not covered
+   --> src/main.rs:112:11
+    |
+112 |     match dice_roll {
+    |           ^^^^^^^^^ patterns `i32::MIN..=2_i32`, `4_i32..=6_i32` and `8_i32..=i32::MAX` not covered
+    |
+    = note: the matched value is of type `i32`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern, a match arm with multiple or-patterns as shown, or multiple match arms
+```
+
+#### Crates, Modules and Packages
+A medida que los proyectos se van haciendo mas grandes, es mandatorio organizar el código en componentes independientes utilizando la parte pública (o interfaces) del mismo, dando igual el como esté implementado. `Rust` ofrece la siguiente organización del código
+- **Packages**: una funcionalidad de `Cargo` que permite construir, probar y compartir `crates`.
+- **Crates**: un árbol de módulos que tiene como resultado una librería y un ejecutable.
+- **Modules and use**: te permite controlar la organización, el `scope` y la privacidad de los directorios
+- **Paths**: la manera de nombrar un elemento, como un `struct`, `función` o `módulo`.
+
+Ejemplo de `module` and `use`:
+```rust
+
+// Modules ///////
+mod math {
+    pub fn add(a: i32, b: i32) -> i32 {
+        a + b
+    }
+
+    fn secret() {
+        println!("Esto es privado 😎");
+    }
+}
+
+// Use ///////
+mod math {
+    pub fn add(a: i32, b: i32) -> i32 {
+        a + b
+    }
+}
+
+fn main() {
+    // sin use
+    let x = crate::math::add(2, 3);
+
+    // con use
+    use crate::math::add;
+    let y = add(5, 7);
+
+    println!("x = {}, y = {}", x, y);
+}
+
+// Privacy ///////
+mod outer {
+    pub mod inner {
+        pub fn hello() {}
+        fn hidden() {}
+    }
+}
+
+fn main() {
+    outer::inner::hello(); // funciona
+    // outer::inner::hidden(); // ❌ error: función privada
+}
+```
+
+Ejemplo de `paths`
+- simple
+```rust
+fn foo() {}
+fn main() {
+    foo(); // path simple
+}
+```
+- absoluto
+```rust
+mod a {
+    pub fn hello() {}
+}
+
+fn main() {
+    crate::a::hello(); // path absoluto
+}
+```
+- relativo
+```rust
+mod a {
+    pub fn f() {}
+    pub mod b {
+        pub fn g() {}
+        pub fn call_parent() {
+            super::f(); // sube un nivel y llama a f
+        }
+    }
+}
+```
+
+##### Crates
+Existen dos tipos de crates:
+- binarios: son los ejecutables generados a raíz del código fuentes, es decir, los ficheros compilados. *Deben tener una función `main` que defina lo que hay que hacer cuando el módulo se ejecute*
+- librerías: No llevan función `main` y no se compilan en un ejecutable, solamente definen funcionalidad que se utiliza en distintos proyectos. Por ejemplo el módilo `rand` o el `math`.
+
+> El _crate root_ es un archivo fuente desde el que parte el compilador Rust y que constituye el módulo raíz de tu crate.
+##### Packages
+Un `paquete` es un conjunto de uno o más `crates` que proporciona un conjunto de funcionalidades. Un `Package` contiene un archivo `Cargo.toml` que describe cómo compilar esos `crates`.
+
+##### Modules cheatsheet
+- **Start from the crate root**: cuando compilamos un `crate`, el compilador primeramente mira el `crate root` (`main.rs` o `binary crate`) buscando código para compilar.
+
+- **Declaring modules**: en el fichero `crate root` puedes declarar nuevos módulos con el comando `mod nombre-modulo`, el compilador buscará el código de ese módulo en los siguientes sitios:
+    - `Inline`, dentro de {} que reemplazan al punto y coma después del `mod nombre-modulo`
+    - En el fichero `src/garden.rs`
+    - En el fichero `src/garden/mod.rs`
+
+- **Declaring submodules**: En cualquier fichero que no sea el `crate root`, puedes declarar submodulos. Por ejemplo, tu puedes declarar `mod vegetables;` in `src/garden.rs`. El compilador mirará por el código del submódulo dentro del directorio nombrado por el modulo padre en los siguientes sitios:
+    - Inline, directamente siguiendo `mod vegetables`, dentro de `{}` en lugar del punto y coma `;`
+    - En el fichero `src/garden/vegetables.rs`
+    - En el fichero `src/garden/vegetables/mod.rs`
+
+- **Paths to code in modules**: Una vez el módulo sea parte del `crate`, tu te puedes referir al código de ese módulo desde donde sea del mismo `crate`, siempre que lo permitan las reglas de privacidad. Por ejemplo, un tipo de vegetal`Asparagus` del módulo de los vegetales puede ser encontrado en `crate::garden::vegetables::Asparagus`.
+
+- **Private vs. public**: El código dentro de un módulo es privado por sus módulos padres por defecto. Para hacerlo público hay que declararlo con el comando  `pub mod` en lugar de `mod`. Para hacer elementos públicos dentro de un módulo público usar `pub` antes de declararlo.
+
+- **The `use` keyword**: Dentro de un `scope`, la palabra clave `use` crea un atajo a los elementos para reducir la repetición de `paths` largos. En cualquier `scope` que se refiera a  `crate::garden::vegetables::Asparagus`, se puede crear un atajo con `use crate::garden::vegetables::Asparagus;` entonces solamente necesitarás escribir `Asparagus` para hacer uso en el `scope`
+
+La manera mas recomendable de usar librerías y módulos es mediante el uso de los paths absolutos (por convención) ya que evita que se produzcan confusiones en el nombrado
+
+```rust
+use std::fmt;
+use std::io;
+
+fn function1() -> fmt::Result {
+    // --snip--
+}
+
+fn function2() -> io::Result<()> {
+    // --snip--
+}
+```
+
+Se pueden añadir alias mediante el comando `as` permitiendo acortar los `use`:
+
+```rust
+use std::fmt::Result;
+use std::io::Result as IoResult;
+
+fn function1() -> Result {
+    // --snip--
+}
+
+fn function2() -> IoResult<()> {
+    // --snip--
+}
+```
+
+#### External Packages
+De manera similar a Python con el `requirements.txt`, lo añadimos al fichero `Cargo.toml`
+```toml
+[package]
+name = "restaurant"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rand = "0.8.5"
+```
+
+Cuando hagamos `build`, se descargará el paquete y será disponible a través de `use`
+```rust
+use rand::Rng;
+
+fn main() {
+    let secret_number = rand::thread_rng().gen_range(1..=100);
+}
+```
+
+Y en el caso de que nos queramos traer varios módulos de la misma librería, podemos anidar los `use`:
+```rust
+use std::Collections::Hasmap;
+use std::io;
+// Se puede simplidicar como
+use std::{Collections::Hasmap, io};
+
+// En caso de que coincidan módulos, se puede sacar todo lo común
+use std::io;
+use std::io::write;
+// Se puede simplificar como
+use std::io{self, write};
+```
+
+##### Glob Operator
+Sirve para, de manera similar a `Python`, importar todos los items definidos en una colección:
+
+```python
+from settings import *
+```
+
+En `Rust` sería
+```rust
+use std::io::*;
+```
+
+Un ejemplo del `use` de global:
+```rust
+// use std::io::stdin; Se puede utilizar este en el ejemplo
+use std::io::*;
+
+fn main() {
+    println!("Escribe tu nombre:");
+
+    let mut nombre = String::new();
+    // El stdin pertenece al modulo std::io
+    stdin().read_line(&mut nombre).expect("Error al leer la línea");
+
+    println!("Hola, {}!", nombre.trim());
+}```
+
+##### Separating Modules into Different Files
+Para mantener cierta organización dentro del módulo es posible separar funcionalidad en distintos ficheros.
+Se puede tirar del crate o del módulo usando:
+- `use`: importa elementos que ya existen para usarlos más fácilmente.
+	- _El módulo ya debe existir (declarado con mod) para poder importarlo_
+- `mod`: declara que existe un módulo. Le dice al compilador "aquí hay un módulo".
+	- _Rust buscará el código en front_of_house.rs o front_of_house/mod.rs (está última es la antigua)_
+
+```rust
+mod front_of_house;
+// ó
+pub use crate::front_of_house::hosting;
+```
+
+#### Collections
+##### Vectores
+
+Para definir un vector se sigue el siguiente formato:
+```rust
+// Fijo -> No se puede añadir elementos
+let vector: vec<i32> = Vec::new()
+// Variable -> Se puede añadir elementos
+let mut vector: vec<i32> = Vec::new()
+// Se puede declarar tambien con la macro
+let vector = vec![<items>];
+// Admite tambien distintos tipos
+let vector_string: v<Str>
+```
+
+Para **añadir** elementos, podemos utilizar la función `push(<item>)`, esta añade elementos al final del vector.
+```rust
+let vector = vec![1, 2, 3];
+vector.push(4);
+// vector -> vector[1, 2, 3, 4];
+```
+
+Para **eliminar** elementos, podemos utilizar la función `pop()`, esta elimina el último elemento del vector.
+
+```rust
+let vector = vec![1,2,3]
+vector.pop()
+// vector -> vector[1, 2]
+```
+
+El acceso a los distintos elementos del vector se puede hacer de las siguientes maneras:
+
+- Acceso mediante la referencia
+```rust
+let vector = vec![1, 2, 3];
+println!("El segundo elemento del vector es: {}", &vector[1]);
+```
+
+- Acceso mediante el método `vector.get()`
+```rust
+let vector = vec![1, 2, 3];
+println!("El segundo elemento del vector es: {}", vector.get(1));
+```
+
+Pero es necesario que controlar que no se pueda acceder a una posición invalida de memoria, tanto si accedemos por referencia como si accedemos por el método `.get()` debemos controlarlo de la siguiente manera:
+
+```rust
+let vector = vec![1, 2, 3];
+if Some(elemento_100) = vector.get(100) {
+	println!("El elemento 100 existe");
+} else {
+	println!("El elemento 100 no existe");
+}
+```
+
+El `panic`que muestra es el siguiente:
+
+```bash
+# Linea con error
+let third_element = &vector_elements[200];
+# Salida
+thread 'main' panicked at src/main.rs:27:41:
+index out of bounds: the len is 7 but the index is 200
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+```
+
+Para recorrer los elementos de un vector lo podemos hacer de la siguiente manera:
+```rust
+let vector = vec![1, 2, 3, 4];
+for item in vector {
+	println!("Elemento del vector {}", item);
+}
+```
+
+Si queremos editar valores del vector, tenemos que declararlo como mutable, y luego dentro del bucle utilizar el operador * (_operador de dereferencia_) para acceder contenido:
+```rust
+for item in &mut vector {
+	println!("Elemento del vector {}", item);
+	*i += 20; // Sumamos 20 a cada uno de los elementos del vector
+}
+```
+
+Para saber el número de elementos del vector podemos utiliza la función `vector.len()`
+##### Using `enum` to store multiple data types
+El vector no está limitado a un solo tipo de datos, mediante una `enum`, podemos definir un vector que contenga todos los tipos de datos definidos en el `enum`. Por ejemplo:
+```rust
+let enum CsvRow{
+	Int(i32),
+	Float(f32),
+	String(String),
+}
+
+fn main {
+	let vector vec![
+		CsvRow::Int(8),
+		CsvRow::Float(1.89),
+		CsvRow::String("Jose Manuel"),
+	];
+	// -> vector[8, 1.89, "Jose Manuel"]
+}
+```
+
+##### `Strings`
+
+> No confundir con `str`
+
+Las cadenas no dejan de ser vectores de caracteres. Se pueden definir de la siguiente manera:
+```rust
+let mut string_1 = "Hola Mundo!".to_string()
+// ó
+let mut string_2 = String::from("Hola Mundo!");
+```
+
+Si queremos concatenar cadenas, a la cadena original se le añade la otra cadena
+
+```rust
+let mut hello = String::from("Hola ");
+hello.push_str("World");
+// Y si queremos añadir solamente un caracter, podemos hacerlo mediante push
+hello.push('!'); // Si, con comillas simples
+```
