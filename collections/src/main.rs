@@ -127,6 +127,20 @@ fn main() {
     hello.push('!');  //  Importante, usar comillas simples!!
     println!("push de caracter: {}", hello);
 
+    let concat_string_1 = String::from("Hola ");
+    let concat_string_2 = String::from("Mundo");
+    let concat_string_3 = String::from("!");
+
+    let concat_string = concat_string_1 + &concat_string_2 + &concat_string_3;
+    // Impoortante si se van a concatenar cadenas, se debe poner & en la segunda y siguientes
+    println!("Concatenacion con +: {}", concat_string);
+
+    let concat_string_4 = String::from("Hola ");
+    let concat_string_5 = String::from("Mundo");
+    let concat_string_6 = String::from("!");
+
+    let concat_string = format!("{concat_string_4}{concat_string_5}{concat_string_6}");
+    println!("Concatenacion con format: {}", concat_string);
 
 
 
