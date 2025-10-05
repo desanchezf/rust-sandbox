@@ -1,5 +1,5 @@
 # rust-sandbox
-Just a Rust Sandbox
+Just a Rust Sandbox.
 
 #### Compile and execution
 
