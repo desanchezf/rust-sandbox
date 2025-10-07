@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 enum CsvRow {
     Int(i32),
     Float(f32),
@@ -142,6 +144,55 @@ fn main() {
     let concat_string = format!("{concat_string_4}{concat_string_5}{concat_string_6}");
     println!("Concatenacion con format: {}", concat_string);
 
+
+    // Iterating over strings
+    let string_iter = String::from("Hola Mundo!");
+    for c in string_iter.chars() {
+        println!("Caracter del string: {c}");
+    }
+
+    // HashMaps
+    let mut population_hash_map = HashMap::new();
+    population_hash_map.insert(String::from("España"), 129083);
+    population_hash_map.insert(String::from("Portugal"), 2213392);
+    population_hash_map.insert(String::from("Andorra"), 34582092);
+    println!("HashMap: {:?}", population_hash_map);
+
+    // Acceder a un valor del HashMap
+    println!("Población de España: {:?}", population_hash_map.get("España"));
+    println!("Población de España: {:?}", population_hash_map.get("Portugal"));
+    println!("Población de España: {:?}", population_hash_map.get("Andorra"));
+
+    // Acceso a través del nombre del país
+    let country = String::from("España");
+    println!("Población de España: {:?}", population_hash_map.get(&country));
+
+    // Recorrer cada uno de los elementos del HashMap
+    for (country, population) in &population_hash_map {
+        println!("HashMap: Población de {}: {}", country, population);
+    }
+
+    // Actualización de un valor de un
+    population_hash_map.insert(String::from("España"), 129083 + 100000000);
+    println!("Población de España: {:?}", population_hash_map.get(&country));
+
+    // Si el valor no existe se puede añadir uno por defecto
+    population_hash_map.entry(String::from("Francia")).or_insert(50);
+    println!("Población de Francia: {:?}", population_hash_map.get(&String::from("Francia")));
+    // Actualiza el valor si existe.
+    // Añade el conjunto clave-valor si no existe.
+
+
+    // Conteo de palabras mediante un diccionario
+    let text = "hello world wonderful world";
+    println!("Texto: {}", text);
+    let mut words_frequency = HashMap::new();
+    for word in text.split_whitespace() {
+        let count = words_frequency.entry(word).or_insert(0);
+        *count += 1;
+    }
+
+    println!("Frecuencia de palabras: {words_frequency:?}");
 
 
 }
