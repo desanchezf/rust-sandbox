@@ -1,3 +1,4 @@
+ // T es la conveción para determinar el tipo de dato generico
 struct Point<T> {
     x: T,
     y: T,
