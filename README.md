@@ -1087,14 +1087,14 @@ struct MixedPoint<T, U> {
 ```
 
 #### In Enums definitions
-
 De manera similar a las `struct`, también es posible definir `enums` con tipos genéricos en sus variantes. Tomemos otro vistazo al enum `Option<T>` que proporciona la biblioteca estándar:
 
 ```rust
 enum Option<T> {
-    Some(T),
-    None,
+	Some(T),
+	None,
 }
+
 ```
 
 Al usar el enum `Option<T>`, podemos expresar el concepto abstracto de un valor opcional, y debido a que `Option<T>` es genérico, podemos usar esta abstracción sin importar cuál sea el tipo del valor opcional.
@@ -1103,60 +1103,289 @@ Los enums también pueden usar múltiples tipos genéricos. La definición del e
 
 ```rust
 enum Result<T, E> {
-    Ok(T),
-    Err(E),
+	Ok(T),
+	Err(E),
 }
 ```
 
 El enum `Result` es genérico sobre dos tipos, `T` y `E`, y tiene dos variantes: `Ok`, que contiene un valor de tipo `T`, y `Err`, que contiene un valor de tipo `E`. Esta definición hace conveniente usar el enum `Result` en cualquier lugar donde tengamos una operación que pueda tener éxito (retornar un valor de algún tipo `T`) o fallar (retornar un error de algún tipo `E`). De hecho, esto es lo que usamos para abrir un archivo, donde `T` se rellenó con el tipo `std::fs::File` cuando el archivo se abrió exitosamente y `E` se rellenó con el tipo `std::io::Error` cuando hubo problemas al abrir el archivo.
 
 #### In Method Definitions
-
-Se pueden definir incluso métodos (`impl`)  de manera similar que los `struct`, `enums` y demás
+Se pueden definir incluso métodos (`impl`) de manera similar que los `struct`, `enums` y demás
 
 ```rust
+
 struct Point<T> {
-    x: T,
-    y: T,
+	x: T,
+	y: T,
 }
 
 impl<T> Point<T> {
-    fn x(&self) -> &T {
-        &self.x
-    }
+	fn x(&self) -> &T {
+		&self.x
+	}
 }
 
 fn main() {
-    let p = Point { x: 5, y: 10 };
-
-    println!("p.x = {}", p.x());
+	let p = Point { x: 5, y: 10 };
+	println!("p.x = {}", p.x());
 }
+
 ```
 
 Se puede incluso definir un tipo concreto (p.ej. `<f32>`) en lugar del `<T>`. Un ejemplo de ello es el siguiente:
 
 ```rust
+
 struct Point<T> {
-    x: T,
-    y: T,
+	x: T,
+	y: T,
 }
 
 impl<T> Point<T> {
-    fn x(&self) -> &T {
-        &self.x
-    }
+	fn x(&self) -> &T {
+		&self.x
+	}
 }
+
 // Método concreto para floats
 impl Point<f32> {
 	fn x_float(&self) -> &f32 {
 		&self.x
 	}
 }
+
 // Fin método concreto
+fn main() {
+	let p = Point { x: 5, y: 10 };
+	println!("p.x = {}", p.x());
+}
+
+```
+
+#### Performance of Code Using Generics
+El uso de Generics no ralentiza el rendimiento del programa con respecto a los tipos concretos. Esto es por la *monomorfización* del código
+
+> *La monomorfización del código consiste en la generación de código concreto a partir de código generico mediante el rellenado de los tipos concretos cuando va a ser compilado*
+
+El compilador busca todos los sitios donde se llama el código genérico y genera el código concreto que se ha especificado.
+
+```rust
+let integer = Some(5);
+let float = Some(5.0);
+```
+
+Internamente se maneja así
+
+```rust
+enum Option_i32 {
+    Some(i32),
+    None,
+}
+
+enum Option_f64 {
+    Some(f64),
+    None,
+}
 
 fn main() {
-    let p = Point { x: 5, y: 10 };
-
-    println!("p.x = {}", p.x());
+    let integer = Option_i32::Some(5);
+    let float = Option_f64::Some(5.0);
 }
 ```
+
+#### Defining Shared Behavior with Traits (*Rasgos*)
+Un *trait* define funcionalidad que un tipo particular puede tener y que puede ser compartida con otros tipos. Los *traits* pueden ser utilizados para definir comportamiento compartido de manera asbtracta.
+
+> Los *trait* son similares a lo que se conoce en otros lenguajes de programación como interfaces, pero con ciertos matices.
+
+#### Defining a Trait
+
+El comportamiento de un tipo son los métodos que podemos llamar en ese tipo. Por ejemplo, en Python si declaramos una cadena, podemos llamar al método split para trocear una cadena mientras que si declaramos una variable numérica da error al llamar al método `.split()`.
+
+```bash
+>>> prueba="Esto es una prueba"
+>>> split_prueba = prueba.split(" ")
+>>> prueba
+'Esto es una prueba'
+>>> split_prueba
+['Esto', 'es', 'una', 'prueba']
+>>> prueba_numero = 5
+>>> split_numero = prueba_numero.split()
+Traceback (most recent call last):
+  File "<python-input-6>", line 1, in <module>
+    split_numero = prueba_numero.split()
+                   ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'int' object has no attribute 'split'
+```
+
+Diferentes tipos comparten el mismo comportamiento si podemos llamar al mismo método independientemente del tipo.
+
+#### Implementing a Trait on a Type
+
+ Se hace de manera similar que si se estuviera implementando un método regular
+
+```rust
+pub struct NewsArticle {
+    pub headline: String,
+    pub location: String,
+    pub author: String,
+    pub content: String,
+}
+
+impl Summary for NewsArticle {
+    fn summarize(&self) -> String {
+        format!("{}, by {} ({})", self.headline, self.author, self.location)
+    }
+}
+
+pub struct SocialPost {
+    pub username: String,
+    pub content: String,
+    pub reply: bool,
+    pub repost: bool,
+}
+
+impl Summary for SocialPost {
+    fn summarize(&self) -> String {
+        format!("{}: {}", self.username, self.content)
+    }
+}
+```
+
+La diferencia es que es que después de de `impl` utilizamos `for` y el especificamos el tipo para el que lo queremos implementar. Dentro de las llaves definimos los métodos que queramos para el tipo de método.
+
+> `pub trait <TIPO>` ➔ Define el contrato
+> `impl <nombre-trait> for <TIPO>` ➔ Implementa el contrato
+
+#### Using Default Implementations
+
+A veces es útil tener un comportamiento predeterminado para algunos o todos los métodos en un rasgo en lugar de requerir implementaciones para todos los métodos en cada tipo.
+
+Por ejemplo, para usar la implementación por defecto, especificamos un bloque `impl` vacío de la siguiente manera `impl Summary for NewArticle {}`
+
+```rust
+pub trait Summary {
+    fn summarize_author(&self) -> String;
+
+    fn summarize(&self) -> String {
+        format!("(Read more from {}...)", self.summarize_author())
+    }
+}
+```
+
+Para usar esta versión de `Summary`, solo necesitamos definir `summarize_author` cuando implementemos el `trait` en un tipo:
+
+```rust
+impl Summary for SocialPost {
+    fn summarize_author(&self) -> String {
+        format!("@{}", self.username)
+    }
+}
+```
+
+Y la llamada se haría de la siguiente manera:
+
+```rust
+    let post = SocialPost {
+        username: String::from("horse_ebooks"),
+        content: String::from(
+            "of course, as you probably already know, people",
+        ),
+        reply: false,
+        repost: false,
+    };
+
+    println!("1 new post: {}", post.summarize());
+```
+
+### Using Traits as Parameters
+
+Para utilizar los `traits` como parámetros, lo hacemos de la siguiente manera:
+
+```rust
+pub fn notify(item: &impl Summary) {
+    println!("Breaking news! {}", item.summarize());
+}
+```
+
+Especificamos `impl` y el nombre del `trait`. Esto lo hacemos porque este parámetro acepta cualquier tipo especificado por el `trait`.
+
+El cuerpo de `notify` podemos llamar a cualquier método en `item` que provenga del `trait` de `Summary` como por ejemplo `summarize`. Ahora podemos llamar a `notify` y pasarle cualquier instancia `NewsArticle` o `SocialPost`, en caso de  que no lo implemente (como por ejemplo `i32` o `f64`), directamente no compilará.
+
+#### Trait Bound Syntax
+
+La sintaxis del `impl Trait` simplificar la manera original o primitiva de la funcionalidad, la manera larga es la siguiente:
+```rust
+pub fn notify<T: Summary>(item: &T) {
+    println!("Breaking news! {}", item.summarize());
+}
+```
+
+Esta sintaxis es mas completa y, por lo tanto, puede expresar mayor complejidad por ejemplo, en el caso de que haya 2 parámetros que quieran implementar `Summary`.
+
+La sintaxis de `impl Trait` es conveniente y permite un código más conciso en casos sencillos, mientras que el uso de la forma primitiva puede expresar mayor complejidad en otros casos.
+
+```rust
+pub fn notify(item1: &impl Summary, item2: &impl Summary) {
+```
+
+El uso de la función `impl Trait` es apropiado si queremos que esta función permita que `item1` e `item2` tengan tipos diferentes. Si queremos forzar que ambos parametros tengan el mismo tipo.
+
+```rust
+pub fn notify<T: Summary>(item1: &T, item2: &T) {
+```
+
+El tipo genérico T especificado como el tipo de los parámetros item1 e item2 restringe la función de tal manera que el tipo concreto del valor pasado como argumento para item1 e item2 debe ser el mismo.
+
+#### Multiple Trait Bounds with the + Syntax
+Podemos definir mas de un `trait bound` con uso del operador `+` por ejemplo, para el caso de `notify` si queremos que se utilice el formato de `summarize` y el de `display`, podemos hacerlo mediante el siguiente código.
+
+```rust
+pub fn notify(item: &(impl Summary + Display)) {
+```
+
+También es válido en tipos de datos genericos
+
+```rust
+pub fn notify<T: Summary + Display>(item: &T) {
+```
+
+#### Clearer Trait Bounds with `where` Clauses
+Todo este uso de `traits` puede implicar que la signatura de la función quede poco legible, para ello se puede utilizar la cláusula `where` después de la función. Por lo tanto, en lugar de escribir esto:
+
+```rust
+fn some_function<T: Display + Clone, U: Clone + Debug>(t: &T, u: &U) -> i32 {
+```
+
+Debemos escribir, lo siguiente:
+
+```rust
+fn some_function<T, U>(t: &T, u: &U) -> i32
+where
+    T: Display + Clone,
+    U: Clone + Debug,
+{
+```
+
+#### Returning Types That Implement Traits
+También podemos usar el `impl Trait` como valor de retorno de algun tipo que implemente un `trait`
+
+```rust
+fn returns_summarizable() -> impl Summary {
+    SocialPost {
+        username: String::from("horse_ebooks"),
+        content: String::from(
+            "of course, as you probably already know, people",
+        ),
+        reply: false,
+        repost: false,
+    }
+}
+```
+
+Con el uso de `impl Summary`para el tipo de retorno especificamos que `return_summarizable` retorna algún tipo que implementa el `trait Summary` sin mencionar el tipo concreto. En este caso `return_summarizable` retorna `SocialPost`. Pero el código que está llamando a esta función no necesita saberlo.
+
+#### Using Trait Bounds to Conditionally Implement Methods
+
+-> https://doc.rust-lang.org/book/ch10-02-traits.html#:~:text=of%20Chapter%2018.-,Using%20Trait%20Bounds%20to%20Conditionally%20Implement%20Methods,-By%20using%20a
