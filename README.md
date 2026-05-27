@@ -1388,4 +1388,815 @@ Con el uso de `impl Summary`para el tipo de retorno especificamos que `return_su
 
 #### Using Trait Bounds to Conditionally Implement Methods
 
--> https://doc.rust-lang.org/book/ch10-02-traits.html#:~:text=of%20Chapter%2018.-,Using%20Trait%20Bounds%20to%20Conditionally%20Implement%20Methods,-By%20using%20a
+Puedes hacer que un método **solo exista** en un tipo genérico si su tipo interno implementa determinados traits:
+
+```rust
+impl<T: Display + PartialOrd> Pair<T> {
+    fn cmp_display(&self) { ... }
+}
+```
+
+`Pair<T>` siempre tiene `new()`, pero `cmp_display()` **solo existe** si `T` implementa `Display` y `PartialOrd`.
+
+Puedes implementar un trait **para todos los tipos** que cumplan cierta condición. La librería estándar de Rust lo usa mucho:
+
+```rust
+// "Todo tipo que implemente Display, automáticamente tiene ToString"
+impl<T: Display> ToString for T { ... }
+```
+
+Por eso puedes hacer `42.to_string()`: los enteros implementan `Display`, y por tanto obtienen `ToString` automáticamente.
+#### Validating References with Lifetimes
+Los `lifetimes` son otro tipo de genéricos. En lugar de asegurar que un tipo tiene el comportamiento que nosotros queremos, nos aseguramos de que se siguen manteniendo las referencias a lo largo del tiempo.
+
+En la mayoría de los casos, la duración de los objetos es implícita e inferida, al igual que los tipos. Solo es necesario anotar los tipos cuando existen múltiples tipos posibles. De manera similar, debemos anotar la duración de los objetos cuando las referencias pueden estar relacionadas de diferentes maneras. `Rust` requiere que anotemos las relaciones utilizando parámetros genéricos de duración para garantizar que las referencias utilizadas en tiempo de ejecución sean válidas.
+
+Los `lifetimes` es algo concreto de este lenguaje, por lo tanto, puede resultar no familiar.
+
+#### Dangling References
+
+Las `Dangling references` son punteros a direcciones de memoria que ya no existen, que ya fueron liberadas o que estén apuntando a otro sitio.
+
+```rust
+fn main() {
+	let r; // -> No existe el valor null, daría error en tiempo de compilación
+		   // ya que intenta imprimir un valor "nulo" (la referencia se termina
+		   // cuando se sale del scope interno)
+
+    {
+        let x = 5;
+        r = &x;
+    }
+
+    println!("r: {r}");
+}
+```
+
+#### The Borrow Checker
+Existe una herramienta en el compilador de `Rust`para comprobar si las referencias de un determinado código son validas.
+
+#### Generic Lifetimes in Functions
+```rust
+fn main() {
+    let string1 = String::from("abcd");
+    let string2 = "xyz";
+
+    let result = longest(string1.as_str(), string2);
+    println!("The longest string is {result}");
+}
+```
+
+> Debe tomar referencias para que no tome el *ownership*, si lo toma, luego no se podrá utilizar fuera de la función, ni para imprimirlo.
+
+Cuando una función puede devolver **una referencia u otra** según una condición, el compilador no sabe cuánto vivirá la referencia devuelta:
+
+```rust
+fn longest(x: &str, y: &str) -> &str {
+    if x.len() > y.len() { x } else { y }
+    // ¿devuelvo x o y? → depende del runtime
+    // ¿cuánto vive el resultado? → el compilador no lo sabe ❌
+}
+```
+
+Son como los genéricos de tipos (`<T>`) pero para `lifetimes`. Se escriben con `'a`:
+
+```rust
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+//        ^^^^     ^^           ^^           ^^
+//    declaro 'a   x vive 'a    y vive 'a   retorno vive 'a
+    if x.len() > y.len() { x } else { y }
+}
+```
+
+El `'a` no cambia cuánto viven `x` e `y`, solo le dice al compilador:
+
+> _"La referencia devuelta vivirá como mínimo lo que viva la más corta entre `x` e `y`"_
+
+#### Lifetime Annotation Syntax
+Las `Lifetime Annotation` no cambia la duración de la vida de una referencia. En su lugar describen la relación de los `Lifetimes` de múltiples referencias sin afectar a las mismas.
+
+Así como las funciones pueden aceptar cualquier tipo cuando la firma especifica un parámetro de tipo genérico, las funciones pueden aceptar referencias con cualquier duración especificando un parámetro de duración genérico.
+
+Se utiliza la siguiente sintaxis para ello:
+
+```rust
+&i32        // a reference
+&'a i32     // a reference with an explicit lifetime
+&'a mut i32 // a mutable reference with an explicit lifetime
+```
+
+#### In Function Signatures
+Para usar `lifetime annotations` en las signaturas de las funciones, necesitamos declarar el parametro de `lifetime generics` dentro de los angulos (`<'a>`) entre el nombre de la función y la lista de parametros.
+
+El compilador necesita saber la relación entre los lifetimes de los parámetros y el valor devuelto. La anotación `'a` no cambia cuánto viven los valores, solo le dice al borrow checker:
+
+```rust
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str { ... }
+// "el resultado vive como mínimo lo que viva el más corto entre x e y"
+```
+
+Si el resultado intenta vivir más que los parámetros → error de compilación.
+
+#### Relationships
+Solo necesitas anotar `'a` en los parámetros que tengan relación con el retorno:
+
+```rust
+// y no necesita 'a porque nunca se devuelve
+fn longest<'a>(x: &'a str, y: &str) -> &'a str { x }
+```
+
+Y nunca puedes devolver una referencia a algo creado dentro de la función → sería una dangling reference.
+
+#### In Struct Definitions
+Si un struct guarda una referencia, necesita anotación de lifetime:
+
+```rust
+struct ImportantExcerpt<'a> {
+    part: &'a str,  // el struct no puede vivir más que esta referencia
+}
+```
+
+#### Lifetime Elision (omisión de lifetimes)
+En casos predecibles el compilador infiere los lifetimes automáticamente, aplicando 3 reglas:
+
+|Regla|Descripción|
+|---|---|
+|1ª|Cada parámetro recibe su propio lifetime|
+|2ª|Si hay un solo parámetro, su lifetime se asigna al retorno|
+|3ª|Si hay `&self`, su lifetime se asigna al retorno|
+
+Por eso esto compila sin anotaciones:
+
+```rust
+fn first_word(s: &str) -> &str { ... }  // el compilador lo resuelve solo
+```
+
+#### In methods
+Igual que con genéricos, se declara `'a` tras `impl`. Gracias a la 3ª regla de elision, raramente necesitas anotar lifetimes en métodos:
+
+```rust
+impl<'a> ImportantExcerpt<'a> {
+    fn announce_and_return_part(&self, announcement: &str) -> &str {
+        self.part  // el compilador infiere que el retorno tiene el lifetime de &self
+    }
+}
+```
+
+#### The Static Lifetime
+Es especial: significa que la referencia vive **todo el programa**. Los string literales siempre tienen `'static`:
+
+```rust
+let s: &'static str = "siempre disponible";
+```
+
+Evita usarlo como solución rápida a errores de lifetime; casi siempre indica un problema mayor.
+
+#### All together
+Se pueden combinar genéricos, trait bounds y lifetimes en una sola función:
+
+```rust
+fn longest_with_an_announcement<'a, T>(
+    x: &'a str,
+    y: &'a str,
+    ann: T,
+) -> &'a str
+where
+    T: Display,
+{ ... }
+```
+
+#### Conclusion
+Los lifetimes garantizan en **tiempo de compilación** que no habrá dangling references, sin coste en tiempo de ejecución. Son la herramienta que conecta la vida útil de referencias entre parámetros y valores de retorno.
+
+
+#### How to write tests
+Los tests son funciones que aseguran que otras funciones están desempeñando su funcionalidad de la manera esperada. Estas constas de 3 partes:
+- `Setup`: parte donde se declaran los datos a utiliza o el estado adecuado.
+- `Run`: código necesario a correr
+- `Assert`: condición a cumplir y/o resultado esperado
+
+#### Structuring test functions
+Estas funciones de test son etiquetadas mediante la palabra reservada `test`. Siempre que generamos un paquete con `Cargo` (`cargo new <nombre> --lib`) se crea un fichero de test con la plantilla definida
+
+`src/lib.rs`
+```rust
+pub fn add(left: u64, right: u64) -> u64 {
+    left + right
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_works() {
+        let result = add(2, 2);
+        assert_eq!(result, 4);
+    }
+}
+```
+
+Y para correr los tests nos vamos dentro del directorio creado con el comando `cargo new <nombre> --lib` y ejecutamos el comando `cargo test`.
+
+```rust
+╰─ cargo test
+   Compiling test-functions v0.1.0 (/Users/dsanchez/Documents/code/rust-sandbox/test-functions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.40s
+     Running unittests src/lib.rs (target/debug/deps/test_functions-0a8b98d83d855f75)
+
+running 1 test
+test tests::it_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests test_functions
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+```
+
+Debe salir algo así si todo ha ido correctamente.
+
+> *Es posible el filtrado de tests a ejecutar, algunos de los filtros son:
+> - Mediante el comando ignore
+> - Filtrado por nombre
+> Es posible también el benchmarking de ciertas funciones de test y la comprobación de que se ha generado documentación en el proyecto.*
+
+Si forzamos a que un test sea incorrecto
+
+```rust
+pub fn add(left: u64, right: u64) -> u64 {
+    left + right
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Este funciona
+    #[test]
+    fn it_works() {
+        let result = add(2, 2);
+        assert_eq!(result, 4);
+    }
+    // Este falla
+    #[test]
+    fn it_fails() {
+        panic!("Make this test fail");
+    }
+}
+```
+
+La salida sería la siguiente:
+
+```rust
+╰─ cargo test
+   Compiling test-functions v0.1.0 (/Users/dsanchez/Documents/code/rust-sandbox/test-functions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running unittests src/lib.rs (target/debug/deps/test_functions-0a8b98d83d855f75)
+
+running 2 tests
+test tests::it_works ... ok
+test tests::it_fails ... FAILED <-
+
+failures:
+
+---- tests::it_fails stdout ----
+
+thread 'tests::it_fails' (2476691) panicked at src/lib.rs:18:9:
+Make this test fail
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::it_fails
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`
+```
+
+Podemos ejecutar grupos de tests indicando el nombre del conjunto, ejecutamos `cargo test <nombre-modulo>`
+
+```rust
+pub fn add(left: u64, right: u64) -> u64 {
+    left + right
+}
+
+#[derive(Debug)]
+struct Rectangle {
+    width: u32,
+    height: u32,
+}
+
+impl Rectangle {
+    fn can_hold(&self, other: &Rectangle) -> bool {
+        self.width > other.width && self.height > other.height
+    }
+}
+
+#[cfg(test)]
+mod base {
+    use super::*;
+
+    // Este funciona
+    #[test]
+    fn it_works() {
+        let result = add(2, 2);
+        assert_eq!(result, 4);
+    }
+
+    // Este falla
+    // #[test]
+    // fn it_fails() {
+    //     panic!("Make this test fail");
+    // }
+
+    #[test]
+    fn assert_is_true() {
+        let result = add(2, 2);
+        assert_eq!(result, 4);
+    }
+
+}
+
+#[cfg(test)]
+mod square {
+    use super::*;
+
+    #[test]
+    fn smaller_cannot_hold_larger() {
+        let larger = Rectangle {
+            width: 8,
+            height: 7,
+        };
+        let smaller = Rectangle {
+            width: 5,
+            height: 1,
+        };
+
+        assert!(!smaller.can_hold(&larger));
+    }
+
+}
+
+```
+
+La salida de `cargo test base`
+
+```rust
+╰─ cargo test base
+   Compiling test-functions v0.1.0 (/Users/dsanchez/Documents/code/rust-sandbox/test-functions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.11s
+     Running unittests src/lib.rs (target/debug/deps/test_functions-0a8b98d83d855f75)
+
+running 2 tests
+test base::assert_is_true ... ok    // <- Pertenece a base
+test base::it_works ... ok          // <- Pertenece a base
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+```
+
+La salida de `cargo test square`
+
+```rust
+╰─ cargo test square
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/test_functions-0a8b98d83d855f75)
+
+running 1 test
+test square::smaller_cannot_hold_larger ... ok   // <- Pertenece a square
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+```
+#### Checking Results with `assert!`
+La macro `assert!`viene incluida con la librería estándar y nos es útil para comprobar si una condición se evalúa a `true`.
+
+```rust
+#[derive(Debug)]
+struct Rectangle {
+    width: u32,
+    height: u32,
+}
+
+impl Rectangle {
+    fn can_hold(&self, other: &Rectangle) -> bool {
+        self.width > other.width && self.height > other.height
+    }
+}
+
+#[cfg(test)]
+mod square {
+    use super::*;
+
+    #[test]
+    fn smaller_cannot_hold_larger() {
+        let larger = Rectangle {
+            width: 8,
+            height: 7,
+        };
+        let smaller = Rectangle {
+            width: 5,
+            height: 1,
+        };
+
+        assert!(!smaller.can_hold(&larger));
+    }
+
+}
+```
+
+En la función `smaller_cannot_hold_larger()` comprobamos si un cuadrado cabe dentro del otro mediante la implementación `can_hold()`, directamente  llamamos a dicha implementación desde el objeto pequeño referenciando al grande. Todo ello desde dentro de los paréntesis del `assert!`
+
+> Nota: debemos usar `use super::*;` dado que el módulo de pruebas es un módulo interno, necesitamos incorporar el código que se está probando en el módulo externo al ámbito del módulo interno. Aquí utilizamos un patrón de comodines, de modo que todo lo que definamos en el módulo externo estará disponible para este módulo de pruebas.
+
+#### Testing Equality with `assert_eq!` and `assert_ne!`
+Como se ha visto anteriormente, existe la sentencua `assert!` que comprueba que el contenido del interior de los paréntesis (ya se función o valor de variable) sea igual a `true`.
+
+Del mismo modo existe la comprobación binaria de dos valores, por ejemplo, en el siguiente código:
+
+```rust
+#[cfg(test)]
+mod assert_eq_neq {
+    use super::*;
+
+	// Para ambos casos a=2
+
+    #[test]
+    fn it_adds_two() {
+        let result = add_two(2);
+        assert_eq!(result, 4);
+    }
+
+    #[test]
+    fn it_adds_two_not_equal() {
+        let result = add_two(2);
+        assert_ne!(result, 5);
+    }
+
+}
+```
+
+
+> Nota: `f32` y `f64` implementan `PartialEq` pero no `Eq` porque, según IEEE 754, `NaN` no es igual a ningún valor, incluido otro `NaN`, así que existe un valor del tipo para el cual `x == x` es `false`. Eso impide tratar la igualdad de floats como una equivalencia matemática total (`Eq`).
+
+#### Adding Custom Failure Messages
+Se pueden añadir mensajes de fallo para `assert!` `assert_eq` y `assert_neq`
+
+```rust
+pub fn greeting(name: &str) -> String {
+    String::from("Hello!")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn greeting_contains_name() {
+        let result = greeting("Carol");
+        assert!(
+            result.contains("Carol"),
+            "Greeting did not contain name, value was `{result}`"
+        );
+    }
+}
+```
+
+Tiene la siguiente salida:
+```rust
+$ cargo test
+   Compiling greeter v0.1.0 (file:///projects/greeter)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.91s
+     Running unittests src/lib.rs (target/debug/deps/greeter-170b942eb5bf5e3a)
+
+running 1 test
+test tests::greeting_contains_name ... FAILED
+
+failures:
+
+---- tests::greeting_contains_name stdout ----
+
+thread 'tests::greeting_contains_name' panicked at src/lib.rs:12:9:
+assertion failed: result.contains("Carol")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::greeting_contains_name
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`
+```
+
+#### Checking for `Panics` with `should_panic`
+Referente a la comprobación de los valores de retorno, es importante chequear que nuestro código maneja las condiciones de error como corresponde. Por ejemplo, en este código:
+
+```rust
+pub struct Guess {
+    value: i32,
+}
+
+impl Guess {
+    pub fn new(value: i32) -> Guess {
+        if value < 1 || value > 100 {
+            panic!("Guess value must be between 1 and 100, got {value}.");
+        }
+
+        Guess { value }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic]
+    fn greater_than_100() {
+        Guess::new(200);
+    }
+}
+```
+
+Al meter el atributo `#[should_panic]` y el valor `200` en `Guess::new(200);`, tal y como está definida la función paniqueara retornando `true` el test
+
+#### Using Result<T, E> in Tests
+En caso de que no queramos utiliza `panic`para cuando las funciones fallen. Para tests es posible utilizar `Result<T, E>!`para retornar `Err` en lugar de `panic`.
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_works() -> Result<(), String> {
+        let result = add(2, 2);
+
+        if result == 4 {
+            Ok(())
+        } else {
+            Err(String::from("two plus two does not equal four"))
+        }
+    }
+}
+```
+
+> Ojo, aquí no utiliza `assert`, aún así cuando se retorna `Err` falla y por lo tanto el test es correcto.
+
+No puedes usar la anotación `#[should_panic]` en pruebas que usan `Result<T, E>`. Para afirmar que una operación devuelve una variante `Err`, no uses el operador de signo de interrogación en el valor `Result<T, E>`. En su lugar, usa `assert!(value.is_err())`.
+
+#### Controlling How Tests Are Run
+Se utiliza `cargo test`para correr los tests, este comando además admite varias opciones como por ejemplo correr módulos concretos de tests con el comando `cargo test <nombre-modulo>`. Se pueden consultar mas comandos en [the “Tests” section of _The `rustc` Book_](https://doc.rust-lang.org/rustc/tests/index.html)
+
+#### Running Tests in Parallel or Consecutively
+Cuando se ejecuta el comando `cargo test`, los tests se ejecutan en paralelo usando hilos. Es posible indicar el número de hilos utilizados mediante el comando:
+
+```rust
+cargo test -- --test-threads=1
+```
+
+#### Showing Function Output
+Por defecto si hay algún `println!()` en algún test, este no se imprime si no es en caso de error. Para mostrar todos los `println!()`de las funciones podemos hacerlo a la hora de ejecutar los test con el comando:
+
+```rust
+cargo test -- --show-output
+```
+
+Y teniendo este código como base:
+
+```rust
+fn prints_and_returns_10(a: i32) -> i32 {
+    println!("I got the value {a}");
+    10
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn this_test_will_pass() {
+        let value = prints_and_returns_10(4);
+        assert_eq!(value, 10);
+    }
+
+    #[test]
+    fn this_test_will_fail() {
+        let value = prints_and_returns_10(8);
+        assert_eq!(value, 5);
+    }
+}
+```
+
+Pasamos de esta salida:
+
+```rust
+$ cargo test
+   Compiling silly-function v0.1.0 (file:///projects/silly-function)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.58s
+     Running unittests src/lib.rs (target/debug/deps/silly_function-160869f38cff9166)
+
+running 2 tests
+test tests::this_test_will_fail ... FAILED
+test tests::this_test_will_pass ... ok
+
+failures:
+
+---- tests::this_test_will_fail stdout ----
+I got the value 8
+
+thread 'tests::this_test_will_fail' panicked at src/lib.rs:19:9:
+assertion `left == right` failed
+  left: 10
+ right: 5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::this_test_will_fail
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`
+```
+
+A esta otra:
+
+```rust
+$ cargo test -- --show-output
+   Compiling silly-function v0.1.0 (file:///projects/silly-function)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.60s
+     Running unittests src/lib.rs (target/debug/deps/silly_function-160869f38cff9166)
+
+running 2 tests
+test tests::this_test_will_fail ... FAILED
+test tests::this_test_will_pass ... ok
+
+successes:
+
+---- tests::this_test_will_pass stdout ----
+I got the value 4
+
+
+successes:
+    tests::this_test_will_pass
+
+failures:
+
+---- tests::this_test_will_fail stdout ----
+I got the value 8
+
+thread 'tests::this_test_will_fail' panicked at src/lib.rs:19:9:
+assertion `left == right` failed
+  left: 10
+ right: 5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::this_test_will_fail
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`
+```
+
+#### Running a subset of tests by name or mod name
+Podemos ejecutar modulos concretos de tests mediante el comando:
+
+```rust
+cargo test <nombre-modulod>/<nombre-funcion>
+```
+
+> Nota: `nombre-modulo` y `nombre-funcion` son expresiones regulares, por lo tanto, puede ejecutar mas de uno en el caso de que se cumpla la regex.
+
+#### Ignoring Tests Unless Specifically Requested
+De la misma manera que podemos indicar tests o grupos de tests a ejecutar, podemos ignorar tests a ejecutar mediante la sentencia `#[ignore]`:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_works() {
+        let result = add(2, 2);
+        assert_eq!(result, 4);
+    }
+
+    #[test]
+    #[ignore]
+    fn expensive_test() {
+        // code that takes an hour to run
+    }
+}
+```
+
+A la hora de ejecutar, se pueden ejecutar normalmente mediante el comando `cargo test` y podemos incluir la flag `--ignore` para la ejecución de los ignorados:
+
+```rust
+cargo test -- --ignored
+```
+
+Y para ejecutar todos (ignorados y no ignorados) ejecutamos el comando:
+
+```rust
+cargo test -- --include-ignored
+```
+
+#### Test Organization
+Se pueden diferenciar dos tipos de tests:  
+- unitarios: son tests pequeños enfocados en testear un modulo aislado solamente pudiendo testear interfaces privadas
+- de integración: son integramente externos a la librería y usan el código de la misma manera que otro código externo lo haría, usando solamente la interfaz y potencialmente usando varios módulos por test.
+
+#### Unit Tests
+El propósito de las pruebas unitarias es probar cada unidad de código de forma aislada del resto del código para identificar rápidamente dónde el código funciona y dónde no funciona como se espera.
+Se alojan las pruebas unitarias en el directorio `src` de cada archivo que contenga el código a probar. La convención es crear un módulo llamado `tests` en cada archivo para contener las funciones de prueba y anotar el módulo con `cfg(test)`.
+
+#### The tests Module and `#[cfg(test)]`
+La anotación en el modulo de `tests` le dice a `Rust` que compile y corra el código de test solamente cuando se escriba `cargo test`, no cuando se haga `cargo build`.
+
+Esto ahorra tiempo de compilación cuando solo se desea compilar la biblioteca y ahorra espacio en el artefacto compilado resultante, ya que las pruebas no se incluyen. Como las pruebas de integración se encuentran en un directorio diferente, no necesitan la anotación `#[cfg(test)]`. Sin embargo, dado que las pruebas unitarias se encuentran en los mismos archivos que el código, se utiliza `#[cfg(test)]` para especificar que no deben incluirse en el resultado compilado.
+
+#### Integration Tests
+En `Rust`, las pruebas de integración son completamente externas a tu biblioteca. Utilizan tu biblioteca del mismo modo que cualquier otro código, lo que significa que solo pueden llamar a funciones que forman parte de la `API` pública de tu biblioteca.
+
+Su propósito es comprobar si muchas partes de su biblioteca funcionan correctamente juntas. Las unidades de código que funcionan correctamente por sí solas podrían tener problemas al integrarse, por lo que la cobertura de pruebas del código integrado también es importante.
+
+> Para crear pruebas de integración, primero necesita un directorio de pruebas.
+
+#### The tests Directory
+
+Creamos un directorio llamado "tests" en la raíz del directorio de nuestro proyecto, junto a "src". Cargo sabe que debe buscar los archivos de pruebas de integración en este directorio. Luego podemos crear tantos archivos de prueba como queramos, y Cargo compilará cada uno de ellos como un paquete individual.
+
+Crea un directorio llamado tests y crea un nuevo archivo llamado tests/integration_test.rs. La estructura de tu directorio debería verse así:
+
+```bash
+adder
+├── Cargo.lock
+├── Cargo.toml
+├── src
+│   └── lib.rs
+└── tests
+    └── integration_test.rs
+```
+
+`tests/integration_test.rs`
+```rust
+use adder::add_two;
+
+#[test]
+fn it_adds_two() {
+    let result = add_two(2);
+    assert_eq!(result, 4);
+}
+```
+
+Cada fichero en el directorio `tests` es un `crate` diferente. Necesitamos incorporar nuestra biblioteca al `scope` de cada `crate` de prueba. Por esta razón necesitamos incluir al principio del fichero `use adder::add_two;`, lo cual no necesitábamos en las pruebas unitarias.
+
+No necesitamos anotar en el fichero `tests/integration_test.rs` con `#[cfg(test)]`. `Cargo` trata el directorio `tests` de manera especial y compila los ficheros solamente cuando se ejecuta el comando `cargo test`.
+
+#### Submodules in Integration Tests
+Si creas un archivo `tests/common.rs` con funciones helper compartidas, Rust lo trata como un test más y aparece en el output aunque no tenga tests:
+
+```
+Running tests/common.rs
+running 0 tests   ← no queremos esto
+```
+
+En vez de `tests/common.rs`, crear `tests/common/mod.rs`:
+
+```
+tests/
+├── common/
+│   └── mod.rs      ✅ Rust no lo trata como test
+└── integration_test.rs
+```
+
+Así no aparece en el output y puedes usarlo desde cualquier test:
+
+```rust
+// tests/integration_test.rs
+mod common;
+
+#[test]
+fn it_adds_two() {
+    common::setup();  // función compartida
+    assert_eq!(add_two(2), 4);
+}
+```
+
+#### Tests de integración en Binary Crates
+Si tu proyecto **solo** tiene `src/main.rs` y no tiene `src/lib.rs`, **no puedes** hacer tests de integración, porque los binary crates no exponen funciones a otros crates.
+
+La solución es la estructura típica de Rust:
+
+```
+src/main.rs   → solo llama a la lógica de lib.rs (poco código)
+src/lib.rs    → contiene la lógica real → sí se puede testear
+```
+
+Así los tests de integración prueban `lib.rs`, y si eso funciona, el pequeño código de `main.rs` también funcionará.
