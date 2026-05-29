@@ -3,6 +3,7 @@
 use std::env; // Modulo env para pasar parametros por linea de comandos
 use std::fs; // Modulo fs para operaciones sobre archivos/ficheros
 use std::process; // Modulo process para salir del programa
+use std::error::Error; // Modulo error para manejar errores
 
 struct Config {
     query: String,
@@ -33,11 +34,12 @@ fn main() {
         process::exit(1); // Salimos con el codigo 1 -> Error
     });
 
-    run(config);
+    // _ es un comodin para ignorar el valor de retorno de la función
+    let _ = run(config);
 }
 
-
-fn run(config: Config) {
+// Box<dyn Error> -> Es un trait que significa que el error puede ser de cualquier tipo
+fn run(config: Config) -> Result<(), Box<dyn Error>>{
 
     // Flujo para leer el fichero
     // - Coge el file_path
@@ -46,7 +48,8 @@ fn run(config: Config) {
     //     - Ok(String) -> Si el fichero se ha leido correctamente
     //     - Err(std::io::Error) -> Si el fichero no se ha podido leer
     //   -> expect("Should have been able to read the file") -> Si el fichero no se ha podido leer, se lanza un error
-    let contents = fs::read_to_string(&config.file_path).expect("Should have been able to read the file");
+    let contents = fs::read_to_string(&config.file_path)?;
+    //  (?) retornará el valor del error donde se llama para que sea manejado
     let mut matches = 0;
 
     for (i, line) in contents.lines().enumerate() {
@@ -60,4 +63,7 @@ fn run(config: Config) {
     if matches == 0 {
         println!("No matches found for {} in file {}", &config.query, &config.file_path);
     }
+    // Retornamos Ok(()) en caso de que haya ido todo correcto
+    // () -> Unit -> Tipo unitario -> No retorna nada
+    Ok(())
 }
