@@ -1,69 +1,94 @@
 // use std -> Libreria estandar de Rust
+/// Esto es un programa que busca una cadena de texto dentro de un fichero
+/// y muestra las líneas que contienen la cadena de texto.
+///
+/// Uso:
+///     minigrep <query> <file_path>
+///
+/// Ejemplo:
+///     minigrep "rust" src/main.rs
+///
+/// Opciones:
+///     -i, --ignore-case    Ignore case
+/// # Examples
+/// Pruebote
 
-use std::env; // Modulo env para pasar parametros por linea de comandos
-use std::fs; // Modulo fs para operaciones sobre archivos/ficheros
-use std::process; // Modulo process para salir del programa
-use std::error::Error; // Modulo error para manejar errores
+use std::env;
+use std::error::Error;
+use std::fs;
+use std::process;
+
+use minigrep::{print_matches, search, search_case_insensitive};
 
 struct Config {
     query: String,
     file_path: String,
+    ignore_case: bool,
 }
 
 impl Config {
-    fn build(args: &[String]) -> Result<Config, &'static str> {
-        if args.len() != 3 {
-            return Err("Usage: minigrep <query> <file_path>");
-        }
-        let query = args[1].clone();
-        let file_path = args[2].clone();
-        Ok(Config { query, file_path })
+    fn build(
+        mut args: impl Iterator<Item = String>,
+    ) -> Result<Config, &'static str> {
+        args.next();
+
+        let query = match args.next() {
+            Some(arg) => arg,
+            None => return Err("Didn't get a query string"),
+        };
+
+        let file_path = match args.next() {
+            Some(arg) => arg,
+            None => return Err("Didn't get a file path"),
+        };
+
+        // Comprobamos si existe
+        let exists_ignore_case = env::var("IGNORE_CASE").is_ok();
+        // Asociamos el valor si existe y es 1
+        let ignore_case = exists_ignore_case && env::var("IGNORE_CASE").unwrap() == "1";
+
+        Ok(Config {
+            query,
+            file_path,
+            ignore_case,
+        })
     }
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    // let args: Vec<String> = env::args().collect();
 
     // let arg_1 = &args[1]; // Usamos referencia o la función .clone() pero no = args[1] aunque sea vector
     // let arg_2 = &args[2]; // Usamos referencia o la función .clone() pero no = args[2] aunque sea vector
     // println!("arg-1: {}", arg_1);
     // println!("arg-2: {}", arg_2);
 
-    let config = Config::build(&args).unwrap_or_else(|error| {
-        println!("Problem parsing arguments: {error}");
+    let config = Config::build(env::args()).unwrap_or_else(|error| {
+        eprintln!("Problem parsing arguments: {error}");
         process::exit(1); // Salimos con el codigo 1 -> Error
     });
 
     // _ es un comodin para ignorar el valor de retorno de la función
-    let _ = run(config);
+    if let Err(e) = run(config){
+        eprintln!("Application error: {e}");
+        process::exit(1);
+    }
 }
 
 // Box<dyn Error> -> Es un trait que significa que el error puede ser de cualquier tipo
-fn run(config: Config) -> Result<(), Box<dyn Error>>{
+fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
-    // Flujo para leer el fichero
-    // - Coge el file_path
-    // - Abre el fichero
-    // - Retorna un valor de tipo std::io::Result<String> -> Result es un enum con los siguientes campos:
-    //     - Ok(String) -> Si el fichero se ha leido correctamente
-    //     - Err(std::io::Error) -> Si el fichero no se ha podido leer
-    //   -> expect("Should have been able to read the file") -> Si el fichero no se ha podido leer, se lanza un error
     let contents = fs::read_to_string(&config.file_path)?;
-    //  (?) retornará el valor del error donde se llama para que sea manejado
-    let mut matches = 0;
+    let matches = if config.ignore_case {
+        println!("Searching for case insensitive");
+        search_case_insensitive(&config.query, &contents)
+    } else {
+        println!("Searching for case sensitive");
+        search(&config.query, &contents)
+    };
 
-    for (i, line) in contents.lines().enumerate() {
-        // OJO!! -> Distingue entre mayusculas y minusculas -> Lorem != lorem
-        if line.contains(&config.query) {
-            let line = line.replace(&config.query, &format!("\x1b[31m{}\x1b[0m", &config.query));
-            println!("Coincidence ({i}): {line}");
-            matches += 1;
-        }
-    }
-    if matches == 0 {
-        println!("No matches found for {} in file {}", &config.query, &config.file_path);
-    }
-    // Retornamos Ok(()) en caso de que haya ido todo correcto
-    // () -> Unit -> Tipo unitario -> No retorna nada
+    println!("Coincidences found: {}", matches.len());
+    print_matches(&config.query, &matches, config.ignore_case);
+
     Ok(())
 }
