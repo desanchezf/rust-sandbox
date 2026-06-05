@@ -15,6 +15,8 @@
 `package`: una funcionalidad de `Cargo` que permite construir, probar y compartir `crates`.
 `modules and use`: te permite controlar la organización, los `scopes` y la privacidad de los directorios
 `paths`: la manera de nombrar (o llamar) un elemento, como un `struct`, `función` o `módulo`.
+`closures` ➔ una función que se puede almacenar en una variable
+`iterators` ➔ una manera de procesar un conjunto de elementos
 
 ## 1. Cargo
 Para crear un nuevo proyecto con **Cargo**
@@ -2200,3 +2202,795 @@ src/lib.rs    → contiene la lógica real → sí se puede testear
 ```
 
 Así los tests de integración prueban `lib.rs`, y si eso funciona, el pequeño código de `main.rs` también funcionará.
+
+## 4. An I/O Project: Building a Command Line Program
+
+#### Accepting Command Line Arguments
+La primera tarea para este mini proyecto es la de que el programa en cuestión deba aceptar parámetros mediante linea de comandos, para pasarle argumentos al programa en cuestión se hace mediante el comando:
+
+```rust
+cargo run -- <arg-1> <arg-2> ... <arg-N>
+```
+
+Para este minigrep, inicialemente se incluirán los comandos `cadena-a-buscar``nombre-fichero-donde-buscar`
+
+#### Reading the Argument Values
+Aunque le pasemos los argumentos por linea de comandos, si no implementamos lógica dentro del programa, será imposible capturar dichos argumentos dentro del programa.  Para ello necesitamos  la función `std::env::args` de la librería estándar de `Rust`, esta función retorna un iterador de los argumentos de linea de comandos de la siguiente manera:
+
+```rust
+use std::env;
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    dbg!(args);
+}
+```
+
+
+> Tenga en cuenta que `std::env::args` provocará un error si algún argumento contiene caracteres Unicode no válidos. Si su programa necesita aceptar argumentos con caracteres Unicode no válidos, utilice `std::env::args_os`. Esta función devuelve un iterador que produce valores de tipo `OsString` en lugar de valores de tipo `String`. Hemos optado por usar `std::env::args` aquí por simplicidad, ya que los valores de `OsString` varían según la plataforma y son más complejos de manejar que los de tipo `String`.
+
+#### Saving the Argument Values in Variables
+Añadimos el siguiente código para almacenar la `query` por un lado (es decir la cadena a buscar dentro del fichero) y el `file_path` (la ruta al fichero donde vamos a buscar).
+
+```rust
+use std::env;
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    let query = &args[1];
+    let file_path = &args[2];
+
+    println!("Searching for {query}");
+    println!("In file {file_path}");
+}
+```
+
+#### Reading a file
+Ahora vamos a añadir la funcionalidad de para leer el contenido de un fichero, primeramente debemos importar el módulo al principio del fichero con el comando `use`
+
+```rust
+use std::fs;
+```
+
+Y después dentro de la función `main`, añadimos el código necesario para abrir y leer el fichero y lo guardamos en una variable
+
+```rust
+let contents = fs::read_to_string(file_path).expect("Should have been able to read the file");
+```
+
+Flujo de lectura del fichero:
+- Coge el `file_path`
+- Abre el fichero
+- Retorna un valor de tipo `std::io::Result<String>` ➔ `Result` es un `enum` con los siguientes campos:
+     - `Ok(String)` ➔ Si el fichero se ha leido correctamente
+     - `Err(std::io::Error)` ➔ Si el fichero no se ha podido leer
+ - Luego se usa el `.expect("Loquesea")` ➔ Si el fichero no se ha podido leer, se lanza un error
+
+#### Refactoring to Improve Modularity and Error Handling
+Ahora mismo el proyecto está en el siguiente estado
+- `main` hace demasiadas cosas a la vez; cada función debería tener una sola responsabilidad.
+- Las variables de configuración deberían agruparse en una estructura para clarificar su propósito.
+- Los mensajes de error con `expect` son demasiado genéricos y no informan al usuario de qué salió mal.
+- El manejo de errores está disperso; centralizarlo facilitaría el mantenimiento y daría mensajes más claros al usuario.
+#### Separating Concerns in Binary Projects
+El proceso de agrupación y reubicación de responsabilidades en varios ficheros tiene los siguientes pasos:
+- Separar el programa en `main.rs` y `lib.rs` y mover toda la lógica a `lib.rs`
+	- *Si la lógica es básica/sencilla, puede permanecer en el* `main.rs`
+	- *Por el contrario si la lógica aumenta de complejidad, extraer dicha funcionalidad a otras funciones, modulos, tipos, etc.*
+
+Finalmente lo que debe quedar en el fichero `main.rs`
+- Llamada a la logica de parseo con los argumentos de entrada.
+- Seteo de configuraciones.
+- Llama a funciones `run` del modulo `lib.rs`.
+- Manejo de errores si el `run` retorna error.
+
+Por lo tanto, podemos afirmar que `main.rs` maneja el programa que está corriendo y el `lib.rs` almacena toda la lógica consumida por el `main.rs`. Esto nos permite separar el código en varias funciones/módulos, y por ende, que sea mas fácil de testear.
+
+#### Grouping Configuration Values
+Para añadir sentido a las variables `file_path` y `query` pueden ser agrupadas mediante un `Struct` que le de nombre, por lo tanto podemos agrupar esas dos variables de la siguiente manera:
+- Declaramos el `Struct Config` con los campos `query` y `file_path` (al principio del fichero o después del `main`)
+
+```rust
+struct Config {
+    query: String,
+    file_path: String,
+}
+```
+
+- Cambiamos los tipos devueltos de las funciones
+
+#### Creating a constructor for `Config`
+Si creamos un constructor, podemos inicializar directamente un variable de tipo `Config` con los valores que queramos. Podemos utilizar el siguiente código:
+
+```rust
+// En el main
+let config = Config::new(&args);
+
+// Implementación
+impl Config {
+    fn new(args: &[String]) -> Config {
+        let query = args[1].clone();
+        let file_path = args[2].clone();
+        Config { query, file_path }
+    }
+}
+```
+
+Siendo ya innecesaria la función de `parse_config()`que realizaba mas o menos esta función, quedando así de manera mas limpia y elegante.
+
+#### Fixing the Error Handling
+En el caso de que el número de parámetros sea incorrecto (!=3) será necesario controlar esa condición ya que dará error en el caso de que llamemos al programa con 1 o con mas de dos parámetros. Por lo tanto, será necesario añadir la siguiente condición al constructor.
+
+```rust
+fn new(args: &[String]) -> Config {
+	if args.len() != 3 {
+		panic!("Usage: minigrep <query> <file_path>");
+	}
+	let query = args[1].clone();
+	let file_path = args[2].clone();
+	Config { query, file_path }
+}
+```
+
+Incluimos la condición de que si el número de argumentos es distinto de 3 (`nombre-fichero`, `query` y `file-path`) y lo manejamos con `panic!` dando lugar a esta salida:
+
+```rust
+╰─ cargo run -- lore src/lore-ipsum.txt prueba
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running `target/debug/minigrep lore src/lore-ipsum.txt prueba`
+
+thread 'main' (3463505) panicked at src/main.rs:14:13:
+Usage: minigrep <query> <file_path>
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+```
+
+#### Returning a `Result` Instead of Calling `panic!` and Calling `Config::build` and handling errors
+El uso de `panic!` muestra que hay un error pero no que tipo de error hay, con el uso de `Result` solventamos esa problemática. Lo podemos implementar de la siguiente manera en la función del constructor (que pasará a llamarse `build`):
+
+```rust
+// Añadimos el modulo process
+use std::proccess;
+
+// El new pasa a llamarse build
+fn build(args: &[String]) -> Result<Config, &str> {
+	if args.len() != 3 {
+		return Err("Usage: minigrep <query> <file_path>");
+	}
+	let query = args[1].clone();
+	let file_path = args[2].clone();
+	Ok(Config { query, file_path })
+}
+
+// Y en el main
+let config = Config::build(&args).unwrap_or_else(|error| {
+	println!("Problem parsing arguments: {error}");
+	process::exit(1);
+});
+```
+
+> *Ver que hace el comando .unwrap_or_else()*
+
+#### Extracting Logic from main
+En este paso nos encargaremos de separar la funcionalidad en una función que se llame `run` que contendrá toda la lógica de la función `main` y que no está involucrada en la configuración o el manejo de errores.
+
+Una vez esté aplicado este paso, quedará una función `main` simplificada y fácil de inspeccionar y por consecuencia, fácil de escribir tests.
+
+```rust
+// use std -> Libreria estandar de Rust
+
+use std::env; // Modulo env para pasar parametros por linea de comandos
+use std::fs; // Modulo fs para operaciones sobre archivos/ficheros
+use std::process; // Modulo process para salir del programa
+
+struct Config {
+    query: String,
+    file_path: String,
+}
+
+impl Config {
+    fn build(args: &[String]) -> Result<Config, &'static str> {
+        if args.len() != 3 {
+            return Err("Usage: minigrep <query> <file_path>");
+        }
+        let query = args[1].clone();
+        let file_path = args[2].clone();
+        Ok(Config { query, file_path })
+    }
+}
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    // let arg_1 = &args[1]; // Usamos referencia o la función .clone() pero no = args[1] aunque sea vector
+    // let arg_2 = &args[2]; // Usamos referencia o la función .clone() pero no = args[2] aunque sea vector
+    // println!("arg-1: {}", arg_1);
+    // println!("arg-2: {}", arg_2);
+
+    let config = Config::build(&args).unwrap_or_else(|error| {
+        println!("Problem parsing arguments: {error}");
+        process::exit(1); // Salimos con el codigo 1 -> Error
+    });
+
+    run(config);
+}
+
+
+fn run(config: Config) {
+
+    // Flujo para leer el fichero
+    // - Coge el file_path
+    // - Abre el fichero
+    // - Retorna un valor de tipo std::io::Result<String> -> Result es un enum con los siguientes campos:
+    //     - Ok(String) -> Si el fichero se ha leido correctamente
+    //     - Err(std::io::Error) -> Si el fichero no se ha podido leer
+    //   -> expect("Should have been able to read the file") -> Si el fichero no se ha podido leer, se lanza un error
+    let contents = fs::read_to_string(config.file_path).expect("Should have been able to read the file");
+
+    for (i, line) in contents.lines().enumerate() {
+        // OJO!! -> Distingue entre mayusculas y minusculas -> Lorem != lorem
+        if line.contains(&config.query) {
+            let line = line.replace(&config.query, &format!("\x1b[31m{}\x1b[0m", &config.query)); // Se ha añadido esto resaltar en rojo la coincidencia de la palabra
+            println!("Coincidence ({i}): {line}");
+        }
+    }
+}
+```
+
+#### Returning Errors from `run`
+
+#### Handling Errors Returned from `run` in `main`
+
+Directamente comprobamos si el retorno de la función run es un `Err(e)`si lo es, imprimimos el error y finalizamos el programa.
+
+```rust
+if let Err(e) = run(config) {
+	println!("Application error: {e}");
+	process::exit(1);
+}
+```
+
+#### Splitting code into a library crate
+Ahora que ya ha tomado cierto volumen el programa de `minigrep`, es hora de separar cierta funcionalidad en el fichero `lib.rs`. De esta manera la función de testeo se facilita.
+
+#### Adding Functionality with Test-Driven Development (TDD)
+En este apartado añadiremos funcionalidad mediante la metodología de desarrollo llamada TDD (*Test Driven Development*), donde primero escribiremos el Test y después el código que cumplirá con ese test. La metodología TDD consta de los siguientes pasos:
+- Escribir un Test que falle y correrlo para asegurarte de que falla por la razón que esperas.
+- Modifica el código para que el Test escrito pase.
+- Refactoriza el código que haya añadido o cambiado y asegurate de que el Test sigue pasando.
+- Repetir el primer paso
+
+[Rellenar](https://doc.rust-lang.org/book/ch12-04-testing-the-librarys-functionality.html)
+#### Working with Environment Variables
+Vamos a añadir una funcionalidad, que contemple, en base a una variable de entorno si queremos que sea `case sensisive` o no.
+
+#### Writing a failing Test for `Case-Insensitive` search
+Primeramente añadimos una función que se llame `search_case_sensitive`
+
+#### Redirecting Errors to Standard Error
+Hasta ahora hemos utilizado la macro de `println!` pero hay dos maneras de imprimir los errores:
+- `stdout` ➔ *Standard Output* ➔ *para información general*
+- `stderr` ➔ *Standard Error* ➔ *para mensajes de error*
+
+#### Checking Where Errors Are Written
+Si por ejemplo ejecutamos el script de la siguiente manera, escribimos en la salida `standard`
+
+```bash
+cargo run > salida.txt
+```
+
+Generando el fichero `salida.txt` con el siguiente contenido:
+
+```bash
+Problem parsing arguments: Usage: minigrep <query> <file_path>
+```
+
+#### Printing Errors to Standard Error
+Desde `Rust` tenemos la opción de imprimir a hacia la salida estandar de errores con la macro `eprintln!()`
+
+Incluimos en la función `main` el siguiente código
+
+```rust
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    let config = Config::build(&args).unwrap_or_else(|error| {
+        eprintln!("Problem parsing arguments: {error}"); // -> Usamos eprintln
+        process::exit(1);
+    });
+
+    if let Err(e) = run(config){
+        eprintln!("Application error: {e}"); // -> Usamos eprintln
+        process::exit(1);
+    }
+}
+```
+
+Si ejecutamos `cargo run > output.txt` ahora tenemos por salida lo siguiente:
+
+```bash
+╰─ cargo run > output.txt
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running `target/debug/minigrep`
+Problem parsing arguments: Usage: minigrep <query> <file_path>
+```
+
+Y el fichero `output.txt` lo tenemos vacío
+
+```bash
+╭─ ~/Documents/code/rust-sandbox/minigrep  main !1 ?2                                                                      1 ✘
+╰─ cat output.txt
+
+╭─ ~/Documents/code/rust-sandbox/minigrep  main !1 ?2 
+```
+
+Si lo ejecutamos para hacer el *happy path* con redireccionamiento, tenemos lo siguiente:
+
+```bash
+╭─ ~/Documents/code/rust-sandbox/minigrep  main !1 ?2                                                                      1 ✘
+╰─ IGNORE_CASE=0 cargo run -- Lore src/lore-ipsum.txt > output.txt
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running `target/debug/minigrep Lore src/lore-ipsum.txt`
+```
+
+En el `output.txt` tenemos lo siguiente:
+
+```bash
+Coincidences found: 1
+Coincidence (1): [31mLore[0mm ipsum dolor sit amet, consectetur adipiscing elit. Fusce nulla elit,
+```
+
+> Los caracteres `[31m` y demás es para resaltar la coincidencia en rojo.
+
+Así queda demostrado el uso de una salida u otra.
+
+#### Functional Language Features: Iterators and Closures
+En este apartado se tratarán temas como:
+- `Closures` ➔ una función que se puede almacenar en una variable
+- `Iterators` ➔ una manera de procesar un conjunto de elementos
+- Como usar `closures` e `iterators` para mejorar el I/O en el proyecto de `minigrep`
+- El rendimiento de `closure` vs `iterators`
+
+#### Closures
+Los `closures` son funciones anónimas que se pueden guardar en variables o pueden ser pasadas como argumentos a otras funciones.
+
+#### Capturing the Environment
+Primeramente vamos a ver como  las `closures` pueden capturar valores del entorno donde se han definido para utilizarlos después. En este trozo de código podemos ver:
+
+```rust
+#[derive(Debug, PartialEq, Copy, Clone)]
+enum ShirtColor {
+    Red,
+    Blue,
+}
+
+struct Inventory {
+    shirts: Vec<ShirtColor>,
+}
+
+impl Inventory {
+    fn giveaway(&self, user_preference: Option<ShirtColor>) -> ShirtColor {
+        user_preference.unwrap_or_else(|| self.most_stocked())
+    }
+
+    fn most_stocked(&self) -> ShirtColor {
+        let mut num_red = 0;
+        let mut num_blue = 0;
+
+        for color in &self.shirts {
+            match color {
+                ShirtColor::Red => num_red += 1,
+                ShirtColor::Blue => num_blue += 1,
+            }
+        }
+        if num_red > num_blue {
+            ShirtColor::Red
+        } else {
+            ShirtColor::Blue
+        }
+    }
+}
+
+fn main() {
+    let store = Inventory {
+        shirts: vec![ShirtColor::Blue, ShirtColor::Red, ShirtColor::Blue],
+    };
+
+    let user_pref1 = Some(ShirtColor::Red);
+    let giveaway1 = store.giveaway(user_pref1);
+    println!(
+        "The user with preference {:?} gets {:?}",
+        user_pref1, giveaway1
+    );
+
+    let user_pref2 = None;
+    let giveaway2 = store.giveaway(user_pref2);
+    println!(
+        "The user with preference {:?} gets {:?}",
+        user_pref2, giveaway2
+    );
+}
+```
+
+Una tienda de camisetas hace un sorteo: si el ganador tiene color favorito, recibe ese color; si no, recibe el color del que más stock hay.
+
+El punto clave está en el método `giveaway`:
+
+```rust
+user_preference.unwrap_or_else(|| self.most_stocked())
+```
+
+Aquí `|| self.most_stocked()` es un closure que **captura `self`** del entorno donde está definido. `unwrap_or_else` solo lo ejecuta si hace falta (cuando la preferencia es `None`).
+
+La idea importante es que una **función normal no podría hacer esto** — no puede capturar variables del entorno donde se define. El closure sí, y además lo hace de forma lazy (solo se evalúa si es necesario).
+
+> Similar a las funciones `lambda` de `Python`
+
+#### Inferring and Annotating Closure Types
+En funciones los tipos son obligatorios porque son una interfaz pública. Los closures en cambio son privados, cortos y contextuales, así que el compilador los **infiere automáticamente**.
+
+Estas cuatro líneas hacen exactamente lo mismo:
+
+```rust
+fn  add_one_v1   (x: u32) -> u32 { x + 1 }  // función, tipos obligatorios
+let add_one_v2 = |x: u32| -> u32 { x + 1 };  // closure con tipos explícitos
+let add_one_v3 = |x|             { x + 1 };  // sin tipos
+let add_one_v4 = |x|               x + 1  ;  // sin tipos ni llaves
+```
+
+Una vez que el compilador infiere el tipo, **queda fijo**. Si intentas usar el mismo closure con otro tipo, error:
+
+```rust
+let example_closure = |x| x;
+
+let s = example_closure(String::from("hello")); // ✅ infiere String
+let n = example_closure(5);                     // ❌ ya está bloqueado a String
+```
+
+Es decir, los closures son flexibles en la **definición**, pero una vez usados con un tipo concreto se comportan como si fueran tipados estáticamente — igual que el resto de Rust.
+
+#### Capturing References or Moving Ownership
+Los `closures` pueden capturar el valor del entorno de tres maneras diferentes, que directamente se mapean a las tres diferentes formas en las que una función puede recibir un parámetro.
+
+**1. Borrow inmutable** — la closure solo lee el valor
+```rust
+let only_borrows = || println!("{list:?}");
+```
+
+`list` sigue siendo accesible desde fuera de la closure sin problema.
+
+**2. Borrow mutable** — la closure modifica el valor
+```rust
+let mut borrows_mutably = || list.push(7);
+```
+
+Mientras existe este borrow mutable, **no puedes usar `list` desde fuera** (ni siquiera para leerla).
+
+**3. `move` — toma ownership** — la closure se apropia del valor
+```rust
+thread::spawn(move || println!("{list:?}"));
+```
+
+Se usa principalmente al **pasar closures a nuevos hilos**, porque el hilo necesita garantizar que los datos que usa siguen siendo válidos, y la única forma de asegurarlo es siendo su dueño.
+
+> **Regla general:** Rust elige automáticamente el tipo de captura más restrictivo que necesite la closure. Solo usas `move` cuando tienes que forzarlo explícitamente.
+
+
+#### Moving Captured Values Out of Closures
+Una vez que un cierre ha capturado una referencia o la propiedad de un valor del entorno donde se define (lo que afecta a lo que, si acaso, se mueve dentro del cierre), el código en el cuerpo del cierre define qué sucede con las referencias o los valores cuando el cierre se evalúa posteriormente (lo que afecta a lo que, si acaso, se mueve fuera del cierre).
+
+El cuerpo de un `closure` puede hacer lo siguiente:
+- Mover un valor capturado fuera del `closure`
+- Modificar el valor capturado.
+- No mover ni modificar el valor.
+- No capturar nada del entorno desde el principio.
+
+La manera en la que un `closure` captura y maneja un valor del entorno afecta que `trait` del `closure` implementa.
+
+**`FnOnce`** — se puede llamar **solo una vez**
+- La closure mueve un valor capturado hacia afuera de sí misma
+- Al moverlo, ya no existe para una segunda llamada
+
+**`FnMut`** — se puede llamar **múltiples veces**, puede mutar
+- No mueve valores afuera, pero sí puede modificarlos
+- Ejemplo: `sort_by_key` la usa porque llama a la closure una vez por cada elemento
+
+**`Fn`** — se puede llamar **múltiples veces**, sin efectos secundarios
+- No mueve ni muta nada del entorno
+- La más restrictiva y segura, permite llamadas concurrentes
+
+**Jerarquía:** son aditivas → toda closure implementa al menos `FnOnce`, y las más "capaces" implementan los tres.
+
+```
+FnOnce ⊃ FnMut ⊃ Fn
+```
+
+**Regla práctica:** usa el trait más permisivo posible en tus funciones (`FnOnce` si solo la llamas una vez, `FnMut` si la llamas varias, `Fn` si necesitas concurrencia).
+
+#### Processing a Series of Items with Iterators
+El patrón iterador permite realizar una tarea en una secuencia de elementos de forma secuencial. Un iterador se encarga de la lógica para recorrer cada elemento y determinar cuándo finaliza la secuencia.
+
+**¿Qué es un iterador?** Cualquier tipo que implementa el trait `Iterator`, que solo exige definir el método `next()`, el cual devuelve `Some(item)` o `None` al terminar.
+
+**3 formas de crear un iterador** sobre una colección:
+
+|Método|Devuelve|
+|---|---|
+|`.iter()`|referencias inmutables `&T`|
+|`.iter_mut()`|referencias mutables `&mut T`|
+|`.into_iter()`|valores con ownership|
+
+**2 tipos de métodos sobre iteradores:**
+
+**Consuming adapters** — consumen el iterador (llaman a `next` internamente):
+```rust
+v1_iter.sum()     // consume y suma
+v1_iter.collect() // consume y recolecta en una colección
+```
+
+**Iterator adapters** — producen un nuevo iterador sin consumirlo:
+```rust
+v1.iter().map(|x| x + 1)  // transforma cada elemento
+v1.iter().filter(|x| ...)  // filtra elementos
+```
+
+> ⚠️ Los iteradores son **lazy** — no hacen nada hasta que los consumes. Por eso `map` solo, sin `collect`, no ejecuta nada.
+
+---
+
+**Patrón típico:** encadenar adapters y terminar con un consumer:
+```rust
+v1.iter().map(|x| x + 1).collect()
+```
+
+#### Improving Our I/O Project
+#### Removing a `clone` using an Iterator
+Utilizamos `clone()` por ser lo sencillo, pero no por ello eficiente, por lo tanto, vamos a realizar cambios.
+
+Debemos cambiar la signatura de la función, le pasamos los argumentos directamente a la implementación de la función. De esto:
+
+```rust
+let args: Vec<String> = env::args().collect();
+
+let config = Config::build(&args).unwrap_or_else(|error| {
+	println!("Problem parsing arguments: {error}");
+	process::exit(1); // Salimos con el codigo 1 -> Error
+});
+```
+
+Pasamos a esto:
+```rust
+let config = Config::build(env::args()).unwrap_or_else(|error| {
+	eprintln!("Problem parsing arguments: {error}");
+	process::exit(1); // Salimos con el codigo 1 -> Error
+});
+```
+
+#### Using Iterator Trait Methods
+Y ahora en la implementación, concretamente en la función `build`
+
+```rust
+impl Config {
+    fn build(
+        mut args: impl Iterator<Item = String>,
+    ) -> Result<Config, &'static str> {
+        args.next();
+
+        let query = match args.next() {
+            Some(arg) => arg,
+            None => return Err("Didn't get a query string"),
+        };
+
+        let file_path = match args.next() {
+            Some(arg) => arg,
+            None => return Err("Didn't get a file path"),
+        };
+
+        let ignore_case = env::var("IGNORE_CASE").is_ok();
+
+        Ok(Config {
+            query,
+            file_path,
+            ignore_case,
+        })
+    }
+}
+```
+
+Utilizamos un `iterator` para ir recorriendo los elementos de la variable `args` (*Nos saltamos el primero porque es el nombre del programa*) y capturamos los valores de `query` y `file_path`.
+
+#### Clarifying code with `Iterator` adapters
+En la función `search()` podemos hacer uso de también de los `Iterators`. Pasando de esto
+
+```rust
+pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+    let mut results = Vec::new();
+
+    for line in contents.lines() {
+        if line.contains(query) {
+            results.push(line);
+        }
+    }
+
+    results
+}
+```
+
+A esto otro:
+```rust
+pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+    contents
+        .lines()
+        .filter(|line| line.contains(query))
+        .collect()
+}
+```
+
+Encadenamos métodos del tipo `Vec<&'a str>`:
+- Separamos en lineas
+- Filtramos por la palabra que queramos (`query`)
+- `collect()`
+
+> `collect()` ➔ *es como si fuera una lista que va almacenando todos los elementos filtrados*
+
+#### Choosing between `Loops` and `Iterators`
+Ambos tienen rendimiento similar, aun así depende del contenido que manejan, como lo y demás factores.
+
+> Resumen: la gente utiliza `Iterators`
+
+#### More about `Cargo` and `Crates.io`
+Solamente hemos utilizado algunas de las funcionalidades de `Cargo` como pueden ser `run`,   `test` y `build`, pero puede hacer lo siguiente:
+- Personalizar el `build` a través de perfiles de `release`
+- Publicar librerías en [crates.io](https://crates.io/).
+- Organizar proyectos grandes con espacios de trabajo.
+- Instalar binarios de [crates.io](https://crates.io/).
+- Extender `Cargo` usando comandos personalizados
+Para ampliar la documentación podemos ver la documentación [aquí]([its documentation](https://doc.rust-lang.org/cargo/))
+#### Customizing builds with release profiles
+En `Rust`, los perfiles de `release` son predefinidos, son perfiles personalizados con diferentes configuraciones que permiten al programador tener mas control sobre varias opciones a la hora de compilar el código. Cada perfil es independiente del resto.
+
+Cargo tiene dos perfiles principales:
+- perfil `dev`: se utiliza cuando no se indica nada a la hora de ejecutar `cargo build`
+- perfil `release`: se utiliza cuando se utiliza la flag `--release`
+
+```bash
+>> cargo build
+   Compiling minigrep v0.1.0 (/Users/dsanchez/Documents/code/rust-sandbox/minigrep)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.37s
+
+>> cargo build --release
+   Compiling minigrep v0.1.0 (/Users/dsanchez/Documents/code/rust-sandbox/minigrep)
+    Finished `release` profile [optimized] target(s) in 0.45s
+```
+
+Esta configuración se puede personalizar a través del fichero `cargo.toml` añadiendo configuraciones mediante `[profile.<profile-name>]`. Podemos además sobreescribir configuraciones
+
+```toml
+[profile.dev] // Afecta al perfil dev solamente
+opt-level=1
+
+[profile.release] // Afecta al perfil release solamente
+opt-level=1
+
+[profile.*] // Afecta a ambos
+opt-level=1
+```
+
+En caso de que lo indiquemos, se sobreescribe el valor por defecto que tiene (0) el `opt-level`
+
+> `opt-level` indica cuánto optimiza el compilador el código al generar el binario. Va de menos optimización/compilación más rápida a más optimización/compilación más lenta.
+
+|`opt-level`|Significado|
+|---|---|
+|0|Casi sin optimizar (por defecto en `dev`)|
+|1|Optimizaciones básicas|
+|2|Más optimización (por defecto en `release`)|
+|3|Máxima optimización (también por defecto en `release`)|
+|"s"|Optimizar tamaño del binario|
+|"z"|Optimizar tamaño aún más (agresivo)|
+
+#### Publishing a `crate` to Crates.io
+Es la plataforma para la publicación/distribución de paquetes (`crates`), similar a `pypi` en `Python`.
+
+#### Making Useful Documentation Comments
+Existen dos tipos de comentarios dependiendo de la cantidad de `slashes (/)`  que utilicemos:
+- Comentario internos (`//`): comentario básico no es captado por `cargo doc`
+- Comentarios para documentación (`///`): sirve para generar documentación con `cargo doc`
+
+Comentario interno
+```rust
+/// Esto es un programa que busca una cadena de texto dentro de un fichero
+/// y muestra las líneas que contienen la cadena de texto.
+///
+/// Uso:
+///     minigrep <query> <file_path>
+///
+/// Ejemplo:
+///     minigrep "rust" src/main.rs
+///
+/// Opciones:
+///     -i, --ignore-case    Ignore case
+```
+
+Comentario para documentación
+```rust
+// Comentario simple
+```
+
+Una vez tengamos todos los comentarios para la documentación, podemos generarla mediante el comando `cargo doc`, el cual generará un `HTML`dentro del proyecto en el subdirectorio `<project-name>/target/doc/minigrep/index.html`.
+
+> Si queremos abrir dicho `HTML`directamente ponemos la flag `cargo doc --open` para que se abrá en el navegador una vez se genere la documentación.
+
+#### Commonly used sections
+En la documentación de `Rust` es posible generar secciones con el triple `slash (///)` y `#` indicando el nombre de la sección (`/// # Examples`)
+
+Por ejemplo, aquí generamos el apartado examples para la función `search()`
+```rust
+/// # Examples
+/// Prueba de ejemplo
+pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+    contents
+    .lines()
+    .filter(|line| line.contains(query))
+    .collect()
+}
+```
+
+> `cargo doc` por defecto no documenta el fichero `main.rs`, `lib.rs` y el resto de paquetes si.
+
+Algunas de las secciones que se suelen incluir en la documentación son:
+- `Panics`: donde puede paniquear el programa
+- `Errors`: si una función retorna un `Result`, se añade por contrapartida los errores que se pueden devolver.
+- `Safety`: si la función es `unsafe` cuando se llama, incluir el motivo del por qué la función es `unsafe`.
+#### Documentation comments as tests
+Si incluimos un ejemplo en los comentarios de documentación puede ser ejecutado despues en los tests. Por ejemplo, incluimos:
+
+```rust
+/// # Examples
+/// ```
+/// use minigrep::search;
+///
+/// let contents = "\
+/// Rust:
+/// safe, fast, productive.
+/// Pick three.
+/// Duct tape.";
+/// let result = search("duct", contents);
+/// assert_eq!(result, vec!["safe, fast, productive."]);
+/// ```
+pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+    contents
+    .lines()
+    .filter(|line| line.contains(query))
+    .collect()
+}
+```
+
+Si luego ejecutamos el comando `cargo test`, podemos ver en la salida lo siguiente:
+
+```bash
+╰─ cargo test
+   Compiling minigrep v0.1.0 (/Users/dsanchez/Documents/code/rust-sandbox/minigrep)
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.17s
+     Running unittests src/lib.rs (target/debug/deps/minigrep-24dc813aa4904a97)
+
+running 2 tests
+test tests::case_insensitive ... ok
+test tests::case_sensitive ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/minigrep-bccfd28de98f89d4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests minigrep
+
+running 1 test
+test src/lib.rs - search (line 2) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+```
+
+#### Contained item comments
